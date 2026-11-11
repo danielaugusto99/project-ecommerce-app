@@ -1,8 +1,9 @@
 const mongoose = require('mongoose');
+const axios = require('axios');
 
 mongoose.connect('mongodb://127.0.0.1:27017/ecommerce')
   .then(async () => {
-    console.log('Conectado ao MongoDB para popular o catálogo rico...');
+    console.log('Conectado ao MongoDB. A limpar índices antigos e a importar produtos...');
     
     const productSchema = new mongoose.Schema({
       name: String,
@@ -10,68 +11,43 @@ mongoose.connect('mongodb://127.0.0.1:27017/ecommerce')
       description: String,
       category: String,
       rating: Number,
-      stock: Number
+      stock: Number,
+      image: String
     });
     
     const Product = mongoose.models.Product || mongoose.model('Product', productSchema);
 
-    await Product.deleteMany({});
-    
-    await Product.insertMany([
-      {
-        name: 'MacBook Pro 16" M3 Max',
-        price: 18999.00,
-        description: 'Potência extrema com chip M3 Max, 36GB de memória unificada e SSD de 1TB para fluxos de trabalho profissionais.',
-        category: 'Computadores',
-        rating: 4.9,
-        stock: 12
-      },
-      {
-        name: 'Smartphone Nexus Ultra 5G',
-        price: 5499.00,
-        description: 'Ecrã AMOLED de 6.8 polegadas a 120Hz, câmara quádrupla de 200MP e bateria de longa duração com carregamento rápido.',
-        category: 'Telemóveis',
-        rating: 4.8,
-        stock: 25
-      },
-      {
-        name: 'Headset Gamer Stealth Wireless',
-        price: 899.90,
-        description: 'Áudio espacial imersivo 7.1, cancelamento de ruído ativo (ANC) e autonomia de até 40 horas contínuas.',
-        category: 'Áudio',
-        rating: 4.6,
-        stock: 40
-      },
-      {
-        name: 'Monitor UltraWide Curvo 34"',
-        price: 3299.00,
-        description: 'Resolução WQHD, rácio de atualização de 165Hz e tempo de resposta de 1ms ideal para produtividade e gaming imersivo.',
-        category: 'Monitores',
-        rating: 4.7,
-        stock: 8
-      },
-      {
-        name: 'Teclado Mecânico RGB Pro',
-        price: 649.00,
-        description: 'Switches mecânicos de alta precisão, estrutura em alumínio aeroespacial e iluminação LED personalizável por tecla.',
-        category: 'Acessórios',
-        rating: 4.5,
-        stock: 30
-      },
-      {
-        name: 'Placa Gráfica RTX 5080 Turbo',
-        price: 7499.00,
-        description: 'Arquitetura de nova geração com Ray Tracing avançado e DLSS impulsionado por inteligência artificial.',
-        category: 'Hardware',
-        rating: 5.0,
-        stock: 5
-      }
-    ]);
+    // Apaga a coleção inteira para remover quaisquer índices órfãos ou restrições antigas
+    try {
+      await mongoose.connection.collection('products').drop();
+      console.log('Coleção antiga e respetivos índices eliminados.');
+    } catch (e) {
+      console.log('A coleção estava vazia ou não existia.');
+    }
 
-    console.log('Catálogo rico inserido com sucesso!');
+    try {
+      const response = await axios.get('https://dummyjson.com/products?limit=100');
+      const apiProducts = response.data.products;
+
+      const formattedProducts = apiProducts.map(p => ({
+        name: p.title,
+        price: Number((p.price * 5.5).toFixed(2)),
+        description: p.description,
+        category: p.category.charAt(0).toUpperCase() + p.category.slice(1),
+        rating: p.rating,
+        stock: p.stock,
+        image: p.thumbnail
+      }));
+
+      await Product.insertMany(formattedProducts);
+      console.log(`Sucesso! ${formattedProducts.length} produtos inseridos na base de dados.`);
+    } catch (error) {
+      console.error('Erro ao importar produtos da API:', error.message);
+    }
+
     process.exit();
   })
   .catch(err => {
-    console.error('Erro no seed:', err);
+    console.error('Erro de conexão ao MongoDB:', err);
     process.exit(1);
   });
